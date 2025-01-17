@@ -10,3 +10,4 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 once_cell = "1.18"
 ctor = "0.2.9"
 futures = "0.3.31"
+dashmap = "6.1.0"

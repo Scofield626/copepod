@@ -1,10 +1,9 @@
+use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::any::Any;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tokio::sync::Mutex as AsyncMutex;
 use tokio::task;
 use tracing::{debug, info, Level};
 
@@ -16,40 +15,31 @@ struct ChannelMetadata<T> {
     sender: mpsc::Sender<T>,
 }
 
-/// Global registry for tracking channels with custom identifiers
-static CHANNELS: Lazy<Arc<AsyncMutex<Vec<Box<dyn Any + Send + Sync>>>>> =
-    Lazy::new(|| Arc::new(AsyncMutex::new(Vec::new())));
+static CHANNELS: Lazy<DashMap<String, Box<dyn Any + Send + Sync>>> = Lazy::new(DashMap::new);
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
-/// Generic hook to register an mpsc::Sender with a custom ID
 pub fn hook_channel<T: Send + Sync + 'static>(sender: mpsc::Sender<T>, id: &str) {
     let metadata = ChannelMetadata {
         id: id.to_string(),
         sender,
     };
-    tokio::spawn(async move {
-        let mut channels = CHANNELS.lock().await;
-        channels.push(Box::new(metadata));
-    });
+    CHANNELS.insert(id.to_string(), Box::new(metadata));
 }
 
-/// Spawns a background task that logs queue depth periodically for all registered channels
 pub fn init() {
     if INITIALIZED.swap(true, Ordering::SeqCst) {
         return;
     }
     task::spawn(async move {
         loop {
-            let channels_guard = CHANNELS.lock().await;
-            for channel in channels_guard.iter() {
-                // Attempt to downcast the channel metadata to its original type
-                if let Some(metadata) = channel.downcast_ref::<ChannelMetadata<String>>() {
+            for entry in CHANNELS.iter() {
+                if let Some(metadata) = entry.value().downcast_ref::<ChannelMetadata<String>>() {
                     let capacity = metadata.sender.capacity();
                     let qdepth = DEFAULT_CHANNEL_SIZE - capacity;
+
                     info!(channel_id = %metadata.id, qdepth, "Queue depth check");
                 }
             }
-            drop(channels_guard); // Explicitly drop lock before sleeping
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
     });
