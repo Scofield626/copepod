@@ -1,7 +1,8 @@
 use dashmap::DashMap;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use once_cell::sync::Lazy;
-use std::any::Any;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::task;
@@ -9,37 +10,93 @@ use tracing::{debug, info, Level};
 
 const DEFAULT_CHANNEL_SIZE: usize = 20;
 
-/// Helper struct to store metadata and sender information
+/// Trait for channel metadata
+trait ChannelInfo: Send + Sync {
+    fn get_queue_depth(&self) -> (String, usize);
+}
+
+/// Generic channel metadata implementation
 struct ChannelMetadata<T> {
     id: String,
     sender: mpsc::Sender<T>,
 }
 
-static CHANNELS: Lazy<DashMap<String, Box<dyn Any + Send + Sync>>> = Lazy::new(DashMap::new);
+impl<T: Send + Sync + 'static> ChannelInfo for ChannelMetadata<T> {
+    fn get_queue_depth(&self) -> (String, usize) {
+        let capacity = self.sender.capacity();
+        let qdepth = DEFAULT_CHANNEL_SIZE - capacity;
+        (self.id.clone(), qdepth)
+    }
+}
+
+/// Global registry for tracking channels
+static CHANNELS: Lazy<DashMap<String, Arc<dyn ChannelInfo>>> = Lazy::new(DashMap::new);
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
+/// Generic hook to register an mpsc::Sender with a custom ID
 pub fn hook_channel<T: Send + Sync + 'static>(sender: mpsc::Sender<T>, id: &str) {
     let metadata = ChannelMetadata {
         id: id.to_string(),
         sender,
     };
-    CHANNELS.insert(id.to_string(), Box::new(metadata));
+    let metadata_arc: Arc<dyn ChannelInfo> = Arc::new(metadata);
+    CHANNELS.insert(id.to_string(), metadata_arc);
 }
 
-pub fn init() {
+/// Spawns a background task that logs queue depth periodically for all registered channels
+pub fn init_raw() {
     if INITIALIZED.swap(true, Ordering::SeqCst) {
         return;
     }
     task::spawn(async move {
         loop {
             for entry in CHANNELS.iter() {
-                if let Some(metadata) = entry.value().downcast_ref::<ChannelMetadata<String>>() {
-                    let capacity = metadata.sender.capacity();
-                    let qdepth = DEFAULT_CHANNEL_SIZE - capacity;
+                let (id, qdepth) = entry.value().get_queue_depth();
+                info!(id, qdepth, "Queue depth check");
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+    });
+}
 
-                    info!(channel_id = %metadata.id, qdepth, "Queue depth check");
+/// Spawns a background task that monitors queue depth with multiple progress bars
+pub fn init_with_multi_progress() {
+    if INITIALIZED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    // MultiProgress setup
+    let multi = Arc::new(MultiProgress::new());
+    let style = ProgressStyle::with_template("{msg}: [{wide_bar}] {pos}/{len}")
+        .unwrap()
+        .progress_chars("█▉▊▋▌▍▎▏  ");
+
+    let multi_clone = multi.clone();
+
+    task::spawn(async move {
+        let progress_bars = DashMap::new();
+
+        loop {
+            // If new channels are added, create progress bars for them
+            CHANNELS.iter().for_each(|entry| {
+                let id = entry.key();
+                if !progress_bars.contains_key(id) {
+                    let pb = multi_clone.add(ProgressBar::new(DEFAULT_CHANNEL_SIZE as u64));
+                    pb.set_style(style.clone());
+                    pb.set_message(format!("Channel: {}", id));
+                    progress_bars.insert(id.clone(), pb);
+                }
+            });
+
+            // Update progress bars
+            for item in progress_bars.iter_mut() {
+                let channel_id = item.key();
+                if let Some(metadata) = CHANNELS.get(channel_id) {
+                    let (_, qdepth) = metadata.value().get_queue_depth();
+                    item.value().set_position(qdepth as u64);
                 }
             }
+
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
     });
@@ -50,7 +107,7 @@ async fn main() {
     tracing_subscriber::fmt().with_max_level(Level::INFO).init();
 
     // Initialize the monitoring background task
-    init();
+    init_with_multi_progress();
 
     // Create a channel with a buffer of 10
     let (tx, mut rx) = mpsc::channel(DEFAULT_CHANNEL_SIZE);
