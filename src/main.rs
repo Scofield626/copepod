@@ -1,12 +1,13 @@
 use dashmap::DashMap;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif_log_bridge::LogWrapper;
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::task;
-use tracing::{debug, info, Level};
+use tracing::{debug, info};
 
 const DEFAULT_CHANNEL_SIZE: usize = 20;
 
@@ -66,7 +67,15 @@ pub fn init_with_multi_progress() {
     }
 
     // MultiProgress setup
-    let multi = Arc::new(MultiProgress::new());
+    let multi = MultiProgress::new();
+    let logger = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .build();
+    let level = logger.filter();
+    LogWrapper::new(multi.clone(), logger)
+        .try_init()
+        .unwrap();
+    log::set_max_level(level);
+
     let style = ProgressStyle::with_template("{msg}: [{wide_bar}] {pos}/{len}")
         .unwrap()
         .progress_chars("█▉▊▋▌▍▎▏  ");
@@ -104,7 +113,8 @@ pub fn init_with_multi_progress() {
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt().with_max_level(Level::INFO).init();
+    // This need to commented given the new env logger introduced in progress call
+    // tracing_subscriber::fmt().with_max_level(Level::INFO).init();
 
     // Initialize the monitoring background task
     init_with_multi_progress();
@@ -120,6 +130,7 @@ async fn main() {
         for i in 0..15 {
             tx.send(format!("Message {}", i)).await.unwrap();
             tokio::time::sleep(Duration::from_millis(100)).await; // Simulate workload
+            println!("hey");
         }
     });
 
