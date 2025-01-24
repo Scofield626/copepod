@@ -6,27 +6,32 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::task;
-use tracing::{debug, info, Level};
+use tracing::info;
 
-const DEFAULT_CHANNEL_SIZE: usize = 20;
-const TRACE_INTERVAL: u64 = 500;
+const TRACE_INTERVAL: u64 = 5;
 
 /// Trait for channel metadata
 trait ChannelInfo: Send + Sync {
     fn get_queue_depth(&self) -> (String, usize);
+    fn get_channel_length(&self) -> usize;
 }
 
 /// Generic channel metadata implementation
 struct ChannelMetadata<T> {
     id: String,
+    len: usize,
     sender: mpsc::Sender<T>,
 }
 
 impl<T: Send + Sync + 'static> ChannelInfo for ChannelMetadata<T> {
     fn get_queue_depth(&self) -> (String, usize) {
         let capacity = self.sender.capacity();
-        let qdepth = DEFAULT_CHANNEL_SIZE - capacity;
+        let qdepth = self.len - capacity;
         (self.id.clone(), qdepth)
+    }
+
+    fn get_channel_length(&self) -> usize {
+        self.len
     }
 }
 
@@ -35,9 +40,10 @@ static CHANNELS: Lazy<DashMap<String, Arc<dyn ChannelInfo>>> = Lazy::new(DashMap
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// Generic hook to register an mpsc::Sender with a custom ID
-pub fn hook_channel<T: Send + Sync + 'static>(sender: mpsc::Sender<T>, id: &str) {
+pub fn hook_channel<T: Send + Sync + 'static>(sender: mpsc::Sender<T>, id: &str, len: usize) {
     let metadata = ChannelMetadata {
         id: id.to_string(),
+        len,
         sender,
     };
     let metadata_arc: Arc<dyn ChannelInfo> = Arc::new(metadata);
@@ -82,7 +88,7 @@ pub fn init_with_multi_progress() {
             CHANNELS.iter().for_each(|entry| {
                 let id = entry.key();
                 if !progress_bars.contains_key(id) {
-                    let pb = multi_clone.add(ProgressBar::new(DEFAULT_CHANNEL_SIZE as u64));
+                    let pb = multi_clone.add(ProgressBar::new(entry.value() .get_channel_length() as u64));
                     pb.set_style(style.clone());
                     pb.set_message(format!("Channel: {}", id));
                     progress_bars.insert(id.clone(), pb);

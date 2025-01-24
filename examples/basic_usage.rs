@@ -10,10 +10,11 @@ async fn main() {
     init_with_multi_progress();
 
     // Create a channel with a buffer size of 20
-    let (tx, mut rx) = mpsc::channel(20);
+    let size = 20;
+    let (tx, mut rx) = mpsc::channel(size);
 
     // Hook the channel to monitor its queue depth
-    hook_channel(tx.clone(), "example_channel");
+    hook_channel(tx.clone(), "example_channel", size);
 
     // Spawn a producer task
     tokio::spawn(async move {

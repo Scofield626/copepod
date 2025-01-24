@@ -11,8 +11,9 @@ async fn main() {
     init_with_multi_progress();
 
     // Example 1: Multiple producers and a single consumer
-    let (tx, mut rx) = mpsc::channel(20);
-    hook_channel(tx.clone(), "multi_producer_channel");
+    let size = 20;
+    let (tx, mut rx) = mpsc::channel(size);
+    hook_channel(tx.clone(), "multi_producer_channel", size);
 
     // Producer 1
     let tx_clone1 = tx.clone();
@@ -41,8 +42,8 @@ async fn main() {
     });
 
     // Example 2: Burst traffic with delayed consumer
-    let (tx_burst, mut rx_burst) = mpsc::channel(20);
-    hook_channel(tx_burst.clone(), "burst_traffic_channel");
+    let (tx_burst, mut rx_burst) = mpsc::channel(size);
+    hook_channel(tx_burst.clone(), "burst_traffic_channel", size);
 
     // Burst producer
     tokio::spawn(async move {
@@ -61,8 +62,8 @@ async fn main() {
     });
 
     // Example 3: Shared state between producers
-    let (tx_shared, mut rx_shared) = mpsc::channel(20);
-    hook_channel(tx_shared.clone(), "shared_state_channel");
+    let (tx_shared, mut rx_shared) = mpsc::channel(size);
+    hook_channel(tx_shared.clone(), "shared_state_channel", size);
 
     let shared_state = Arc::new(tokio::sync::Mutex::new(0));
 
