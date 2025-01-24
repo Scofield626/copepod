@@ -1,6 +1,6 @@
 // examples/basic_usage.rs
 
-use channel_tracer::{hook_channel, init_with_multi_progress};
+use channel_tracer::{hook_channel, init};
 use tokio::sync::mpsc;
 use tokio::time;
 
@@ -12,7 +12,7 @@ use tokio::time;
 async fn main() {
     // Initialize the monitoring system with progress bars
     // and update bars every 5 millisecond
-    init_with_multi_progress(5);
+    init(5);
 
     // Create a channel with a buffer size of 20
     let size = 20;

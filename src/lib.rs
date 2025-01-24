@@ -6,7 +6,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::task;
-use tracing::info;
 
 /// Trait for channel metadata
 trait ChannelInfo: Send + Sync {
@@ -48,26 +47,9 @@ pub fn hook_channel<T: Send + Sync + 'static>(sender: mpsc::Sender<T>, id: &str,
     CHANNELS.insert(id.to_string(), metadata_arc);
 }
 
-/// Spawns a background task that logs queue depth periodically for all registered channels
-/// interval: ms interval that progress bars are updated
-pub fn init_raw(interval: u64) {
-    if INITIALIZED.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    task::spawn(async move {
-        loop {
-            for entry in CHANNELS.iter() {
-                let (id, qdepth) = entry.value().get_queue_depth();
-                info!(id, qdepth, "Queue depth check");
-            }
-            tokio::time::sleep(Duration::from_millis(interval)).await;
-        }
-    });
-}
-
 /// Spawns a background task that monitors queue depth with multiple progress bars
 /// interval: ms interval that progress bars are updated
-pub fn init_with_multi_progress(interval: u64) {
+pub fn init(interval: u64) {
     if INITIALIZED.swap(true, Ordering::SeqCst) {
         return;
     }
