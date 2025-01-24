@@ -108,3 +108,24 @@ pub fn init_with_multi_progress(interval: u64) {
         }
     });
 }
+
+#[tokio::test]
+async fn test_hook_channel() {
+    let size = 10;
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<usize>(size);
+    hook_channel(tx.clone(), "test_channel", size);
+
+    let metadata = CHANNELS.get("test_channel").expect("Channel not registered");
+    let (id, qdepth) = metadata.get_queue_depth();
+    assert_eq!(id, "test_channel");
+    assert!(qdepth <= size); // Ensure depth is within expected range
+    assert_eq!(metadata.get_channel_length(), size);
+
+    tx.send(1).await.unwrap();
+    let (_, qdepth) = metadata.get_queue_depth();
+    assert_eq!(qdepth, 1); // Expect 1 message in the queue
+
+    rx.recv().await;
+    let (_, qdepth) = metadata.get_queue_depth();
+    assert_eq!(qdepth, 0); // Expect the queue is empty
+}
