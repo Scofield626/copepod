@@ -8,8 +8,6 @@ use tokio::sync::mpsc;
 use tokio::task;
 use tracing::info;
 
-const TRACE_INTERVAL: u64 = 5;
-
 /// Trait for channel metadata
 trait ChannelInfo: Send + Sync {
     fn get_queue_depth(&self) -> (String, usize);
@@ -51,7 +49,8 @@ pub fn hook_channel<T: Send + Sync + 'static>(sender: mpsc::Sender<T>, id: &str,
 }
 
 /// Spawns a background task that logs queue depth periodically for all registered channels
-pub fn init_raw() {
+/// interval: ms interval that progress bars are updated
+pub fn init_raw(interval: u64) {
     if INITIALIZED.swap(true, Ordering::SeqCst) {
         return;
     }
@@ -61,13 +60,14 @@ pub fn init_raw() {
                 let (id, qdepth) = entry.value().get_queue_depth();
                 info!(id, qdepth, "Queue depth check");
             }
-            tokio::time::sleep(Duration::from_millis(TRACE_INTERVAL)).await;
+            tokio::time::sleep(Duration::from_millis(interval)).await;
         }
     });
 }
 
 /// Spawns a background task that monitors queue depth with multiple progress bars
-pub fn init_with_multi_progress() {
+/// interval: ms interval that progress bars are updated
+pub fn init_with_multi_progress(interval: u64) {
     if INITIALIZED.swap(true, Ordering::SeqCst) {
         return;
     }
@@ -104,7 +104,7 @@ pub fn init_with_multi_progress() {
                 }
             }
 
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::time::sleep(Duration::from_millis(interval)).await;
         }
     });
 }

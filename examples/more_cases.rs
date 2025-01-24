@@ -3,12 +3,12 @@
 use channel_tracer::{hook_channel, init_with_multi_progress};
 use tokio::sync::mpsc;
 use tokio::time;
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
     // Initialize the monitoring system with progress bars
-    init_with_multi_progress();
+    // and update bars every 5 millisecond
+    init_with_multi_progress(5);
 
     // Example 1: Multiple producers and a single consumer
     let size = 20;
@@ -36,7 +36,7 @@ async fn main() {
     // Consumer
     tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
-            println!("Single Consumer received: {}", msg);
+            tracing::debug!("Single Consumer received: {}", msg);
             time::sleep(time::Duration::from_millis(200)).await;
         }
     });
@@ -57,32 +57,7 @@ async fn main() {
     tokio::spawn(async move {
         time::sleep(time::Duration::from_secs(2)).await;
         while let Some(msg) = rx_burst.recv().await {
-            println!("Delayed Consumer received: {}", msg);
-        }
-    });
-
-    // Example 3: Shared state between producers
-    let (tx_shared, mut rx_shared) = mpsc::channel(size);
-    hook_channel(tx_shared.clone(), "shared_state_channel", size);
-
-    let shared_state = Arc::new(tokio::sync::Mutex::new(0));
-
-    // Producer updating shared state
-    let shared_state_clone = shared_state.clone();
-    let tx_shared_clone = tx_shared.clone();
-    tokio::spawn(async move {
-        for _ in 0..10 {
-            let mut state = shared_state_clone.lock().await;
-            *state += 1;
-            tx_shared_clone.send(format!("Updated State: {}", *state)).await.unwrap();
-            time::sleep(time::Duration::from_millis(100)).await;
-        }
-    });
-
-    // Consumer reading messages
-    tokio::spawn(async move {
-        while let Some(msg) = rx_shared.recv().await {
-            println!("Consumer with Shared State received: {}", msg);
+            tracing::debug!("Delayed Consumer received: {}", msg);
         }
     });
 

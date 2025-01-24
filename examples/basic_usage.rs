@@ -4,10 +4,15 @@ use channel_tracer::{hook_channel, init_with_multi_progress};
 use tokio::sync::mpsc;
 use tokio::time;
 
+/// This case emulates single producer and single consumer
+/// where producer throughput is higher than consumer,
+/// therefore, progress bars will show the queue accummulates until
+/// reaching the channel limit, finally drains till the end.
 #[tokio::main]
 async fn main() {
     // Initialize the monitoring system with progress bars
-    init_with_multi_progress();
+    // and update bars every 5 millisecond
+    init_with_multi_progress(5);
 
     // Create a channel with a buffer size of 20
     let size = 20;
@@ -27,7 +32,7 @@ async fn main() {
     // Spawn a consumer task
     tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
-            println!("Received: {}", msg);
+            tracing::debug!("Received: {}", msg);
             time::sleep(time::Duration::from_millis(300)).await; // Simulate processing time
         }
     });
