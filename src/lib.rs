@@ -78,7 +78,7 @@ pub fn init(interval: u64) {
                 if !progress_bars.contains_key(id) {
                     let pb = multi_clone.add(ProgressBar::new(entry.value() .get_channel_length() as u64));
                     pb.set_style(style.clone());
-                    pb.set_message(format!("Channel: {}", id));
+                    pb.set_message(format!("Copepod::{}", id));
                     progress_bars.insert(id.clone(), pb);
                 }
             });
