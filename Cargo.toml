@@ -1,7 +1,9 @@
 [package]
-name = "channel-tracer"
+name = "copepod"
 version = "0.1.0"
-edition = "2021"
+edition = "2025"
+authors = ["Scofield Liu <scofield_zliu@outlook.com>"]
+repository = "https://github.com/Scofield626/copepod"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }

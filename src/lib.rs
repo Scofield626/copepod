@@ -1,3 +1,7 @@
+//! An instrumentation tool to track and visualize queue depths of bounded channels
+//! in tokio runtime. Provides real-time progress bars to monitor channel queuing
+//! behaviour, helping developers to diagnose system issues and identify bottlenecks.
+
 use dashmap::DashMap;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use once_cell::sync::Lazy;
@@ -13,13 +17,24 @@ use tokio::{
     task,
 };
 
-/// Trait for channel metadata
-trait ChannelInfo: Send + Sync {
+/// Trait for channel metadata.
+///
+/// This trait provides methods to retrieve information about a channel,
+/// such as its queue depth and total length.
+pub trait ChannelInfo: Send + Sync {
+    /// Returns the channel's ID and its current queue depth.
+    ///
+    /// The queue depth represents the number of items currently in the channel's queue.
     fn get_queue_depth(&self) -> (String, usize);
+
+    /// Returns the total length (capacity) of the channel.
     fn get_channel_length(&self) -> usize;
 }
 
-/// Generic channel metadata implementation
+/// Generic implementation of channel metadata.
+///
+/// This struct stores metadata for a channel, including its ID, length (capacity),
+/// and the sender half of the channel.
 struct ChannelMetadata<T> {
     id: String,
     len: usize,
@@ -27,22 +42,36 @@ struct ChannelMetadata<T> {
 }
 
 impl<T: Send + Sync + 'static> ChannelInfo for ChannelMetadata<T> {
+    /// Calculates the queue depth by comparing the channel's length with its remaining capacity.
     fn get_queue_depth(&self) -> (String, usize) {
         let capacity = self.sender.capacity();
         let qdepth = self.len - capacity;
         (self.id.clone(), qdepth)
     }
 
+    /// Returns the total length (capacity) of the channel.
     fn get_channel_length(&self) -> usize {
         self.len
     }
 }
 
-/// Global registry for tracking channels
+/// Global registry for tracking channels.
+///
+/// This registry uses a `DashMap` to store channel metadata, allowing concurrent access.
 static CHANNELS: Lazy<DashMap<String, Arc<dyn ChannelInfo>>> = Lazy::new(DashMap::new);
+
+/// Atomic flag to ensure the monitoring task is initialized only once.
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
-/// Generic hook to register an mpsc::Sender with a custom ID
+/// Registers a channel with the global registry.
+///
+/// This function associates an `mpsc::Sender` with a unique ID and its length (capacity).
+/// The channel's metadata is stored in the global registry for monitoring.
+///
+/// # Arguments
+/// - `sender`: The sender half of the channel.
+/// - `id`: A unique identifier for the channel.
+/// - `len`: The total length (capacity) of the channel.
 pub fn hook_channel<T: Send + Sync + 'static>(sender: mpsc::Sender<T>, id: &str, len: usize) {
     let metadata = ChannelMetadata {
         id: id.to_string(),
@@ -53,8 +82,16 @@ pub fn hook_channel<T: Send + Sync + 'static>(sender: mpsc::Sender<T>, id: &str,
     CHANNELS.insert(id.to_string(), metadata_arc);
 }
 
-/// Spawns a background task that monitors queue depth with multiple progress bars
-/// interval: ms interval that progress bars are updated
+/// Initializes a background task to monitor channel queue depths.
+///
+/// This function spawns a Tokio task that periodically updates progress bars
+/// to reflect the queue depth of registered channels.
+///
+/// # Arguments
+/// - `interval`: The time interval (in milliseconds) at which progress bars are updated.
+///
+/// # Panics
+/// This function panics if the progress bar style template is invalid.
 pub fn init(interval: u64) {
     if INITIALIZED.swap(true, Ordering::SeqCst) {
         return;
@@ -76,7 +113,7 @@ pub fn init(interval: u64) {
             CHANNELS.iter().for_each(|entry| {
                 let id = entry.key();
                 if !progress_bars.contains_key(id) {
-                    let pb = multi_clone.add(ProgressBar::new(entry.value() .get_channel_length() as u64));
+                    let pb = multi_clone.add(ProgressBar::new(entry.value().get_channel_length() as u64));
                     pb.set_style(style.clone());
                     pb.set_message(format!("Copepod::{}", id));
                     progress_bars.insert(id.clone(), pb);
