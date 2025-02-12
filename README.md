@@ -27,11 +27,11 @@ Using Copepod requires minimal modifications to your application code. Two APIs 
 
 - Initialize Copepod
 
-  Add `Copepod::init(update_interval_ms: u64)` in your main function to set up Copepod with a specified update interval.
+  Add `copepod::init(update_interval_ms: u64)` in your main function to set up Copepod with a specified update interval.
 
 - Hook Channels
 
   For each channel, add a hook to its sender (tx) using:
   ```rust
-  Copepod::hook_channel(tx.clone(), "channel_name", channel_size)
+  copepod::hook_channel(tx.clone(), "channel_name", channel_size)
   ```
